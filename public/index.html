@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HSP A2A Settlement Terminal</title>
+    <meta
+      name="description"
+      content="An autonomous Payment Agent settling an agent-to-agent payment on HashKey HSP · x402 mandate, EIP-712 signing, two human authorizations, on-chain settlement."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <strong>HSP&nbsp;·&nbsp;A2A Settlement Terminal</strong>
+          <span>Agent-to-agent payments on HashKey · x402 + EIP-712</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span id="mode-badge" class="mode-badge mode-mock" title="Execution mode">
+          <span class="dot"></span><span id="mode-label">mock</span>
+        </span>
+      </div>
+    </header>
+
+    <main class="stage">
+      <!-- LEFT RAIL: the two agents + initiate -->
+      <section class="rail" aria-label="Agents and controls">
+        <div class="wire-group">
+          <article class="agent agent--recv" id="agent-recv">
+            <header>
+              <span class="agent-role">Receiving agent</span>
+              <span class="agent-status" data-state="idle">idle</span>
+            </header>
+            <p class="agent-sub">Merchant side. Transmits the payment conditions.</p>
+            <dl class="agent-facts">
+              <div><dt>merchant</dt><dd id="fact-merchant">·</dd></div>
+              <div><dt>pay_to</dt><dd class="mono" id="fact-payto">·</dd></div>
+              <div><dt>asking</dt><dd id="fact-amount">·</dd></div>
+            </dl>
+          </article>
+
+          <div class="wire" aria-hidden="true">
+            <span class="wire-pulse" id="wire-pulse"></span>
+            <span class="wire-label">A2A mandate</span>
+          </div>
+
+          <article class="agent agent--pay" id="agent-pay">
+            <header>
+              <span class="agent-role">Payment agent</span>
+              <span class="agent-status" data-state="idle">idle</span>
+            </header>
+            <p class="agent-sub">Builds the x402 mandate, signs, settles via HSP Gateway.</p>
+            <dl class="agent-facts">
+              <div><dt>payer</dt><dd class="mono" id="fact-payer">·</dd></div>
+              <div><dt>network</dt><dd id="fact-network">·</dd></div>
+              <div><dt>protocol</dt><dd id="fact-protocol">·</dd></div>
+            </dl>
+          </article>
+        </div>
+
+        <form class="initiate" id="pay-form" autocomplete="off">
+          <h2>Initiate payment</h2>
+          <label>
+            Merchant / team name
+            <input id="in-merchant" name="merchant" value="demo-team" required />
+          </label>
+          <label>
+            Recipient address (pay_to)
+            <input
+              id="in-payto"
+              name="payto"
+              class="mono"
+              value="0x2222222222222222222222222222222222222222"
+              pattern="0x[0-9a-fA-F]{40}"
+              required
+            />
+            <small class="field-hint" id="payto-hint">42-char EVM address, 0x…</small>
+          </label>
+          <fieldset class="services" id="services">
+            <legend>Service to buy</legend>
+            <p class="services-loading" id="services-loading">Loading services…</p>
+          </fieldset>
+          <button type="submit" id="btn-initiate" class="btn btn-primary">
+            <span class="btn-label">Initiate payment</span>
+            <span class="btn-spin" aria-hidden="true"></span>
+          </button>
+          <p class="initiate-note" id="initiate-note"></p>
+        </form>
+      </section>
+
+      <!-- CENTER: the settlement pipeline (hero) -->
+      <section class="pipeline-wrap" aria-label="Settlement pipeline">
+        <div class="pipeline-head">
+          <h1>Settlement pipeline</h1>
+          <span class="pipeline-sub">get_chain_config → create_order → prepare → sign → finalize → submit → query → deliver</span>
+        </div>
+
+        <div class="service-banner" id="service-banner" hidden>
+          <span class="service-banner-dot" aria-hidden="true"></span>
+          <span id="service-banner-text"></span>
+        </div>
+
+        <ol class="pipeline" id="pipeline">
+          <!-- stages injected by app.js -->
+        </ol>
+
+        <!-- Authorization gate (rises when the agent needs a human key) -->
+        <div class="gate" id="gate" hidden aria-live="assertive">
+          <div class="gate-inner">
+            <div class="gate-head">
+              <span class="gate-key" aria-hidden="true"></span>
+              <div>
+                <h3 id="gate-title">Authorize to sign</h3>
+                <p id="gate-sub">Review exactly what you are authorizing.</p>
+              </div>
+            </div>
+            <dl class="gate-facts">
+              <div><dt>recipient (pay_to)</dt><dd class="mono" id="gate-payto">·</dd></div>
+              <div><dt>payer</dt><dd class="mono" id="gate-payer">·</dd></div>
+              <div>
+                <dt>token_total_raw <em>(raw units)</em></dt>
+                <dd class="mono big" id="gate-raw">·</dd>
+              </div>
+              <div><dt>≈ amount</dt><dd id="gate-human">·</dd></div>
+            </dl>
+            <div class="gate-actions">
+              <button class="btn btn-ghost" id="gate-reject" type="button">Reject</button>
+              <button class="btn btn-authorize" id="gate-approve" type="button">
+                <span class="auth-track"><span class="auth-knob"></span></span>
+                <span id="gate-approve-label">Hold to authorize</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settlement receipt (final) -->
+        <div class="receipt" id="receipt" hidden>
+          <div class="receipt-perforation" aria-hidden="true"></div>
+          <h3 class="receipt-title">HSP Agentic Payment · QA Result</h3>
+          <dl id="receipt-body"></dl>
+          <p class="receipt-foot" id="receipt-foot"></p>
+        </div>
+
+        <!-- Delivered resource (the A2A payoff) -->
+        <div class="resource" id="resource" hidden>
+          <div class="resource-head">
+            <span class="resource-icon" id="resource-icon" aria-hidden="true"></span>
+            <div>
+              <h3 id="resource-title">Resource delivered</h3>
+              <p id="resource-sub"></p>
+            </div>
+          </div>
+          <pre class="resource-body mono" id="resource-body"></pre>
+        </div>
+      </section>
+
+      <!-- RIGHT: live event tape -->
+      <section class="tape-wrap" aria-label="Live event log">
+        <div class="tape-head">
+          <h2>Event tape</h2>
+          <button class="btn btn-tiny" id="btn-clear" type="button" disabled>clear</button>
+        </div>
+        <ol class="tape" id="tape">
+          <li class="tape-empty" id="tape-empty">
+            No activity yet. Initiate a payment to watch the A2A flow execute.
+          </li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="footer-mode-note"></span>
+      <span class="footer-sep">·</span>
+      <span>Based on the agent-payment architecture of <code>hrishabhayush/wraps</code>, retargeted to HashKey HSP.</span>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

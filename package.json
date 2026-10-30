@@ -1,0 +1,35 @@
+{
+  "name": "hsp-a2a-payment-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A2A Payment Agent that settles on-chain through HashKey HSP Agentic Payment (x402 + EIP-712). Based on the agent-payment architecture of hrishabhayush/wraps, retargeted to HSP.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server/server.ts",
+    "server": "tsx src/server/server.ts",
+    "demo": "tsx src/demo.ts",
+    "connect": "tsx src/scripts/connect.ts",
+    "pay": "tsx src/scripts/pay.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^4.21.0",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
