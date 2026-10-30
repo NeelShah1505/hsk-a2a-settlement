@@ -8,6 +8,7 @@
  *
  * Run: `pnpm dev`  →  http://localhost:4100
  */
+import "../env.js"; // load .env before anything reads process.env
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import express, { type Request, type Response } from "express";

@@ -6,6 +6,7 @@
  * SIGNER=okx is not drivable from this standalone CLI — OKX wallet signing runs
  * through the MCP agent's wallet skill. Use the host agent for that path.
  */
+import "../env.js"; // load .env before anything reads process.env
 import { loadConfig } from "../config.js";
 import { McpHspClient } from "../hsp/mcp-client.js";
 import { ReceivingAgent } from "../a2a/receiving-agent.js";

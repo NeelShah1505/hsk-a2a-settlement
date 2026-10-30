@@ -5,6 +5,7 @@
  * Prerequisite: your public egress IP must be allowlisted by HSP, or this is
  * blocked at the edge. Do not repeatedly retry a blocked endpoint.
  */
+import "../env.js"; // load .env before anything reads process.env
 import { loadConfig } from "../config.js";
 import { McpHspClient } from "../hsp/mcp-client.js";
 import { listPaymentOptions } from "../mandate/cart-mandate.js";
