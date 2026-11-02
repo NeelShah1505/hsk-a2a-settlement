@@ -11,9 +11,17 @@ rails:
 - **HSP Gateway.** The documented HSP Agentic Payment flow over MCP (all eight tools), with
   the x402 mandate, EIP-712 signing, and spec-faithful status handling.
 
+And it is built so **HSP can settle *into* the escrow**: the receiving agent gives HSP a
+deterministic **deposit address** as the order's `pay_to`; HSP's relayer pays into it with
+`transferWithAuthorization`; `claimDeposit` pulls it into escrow. Proven against the real
+USDC.e contract on a fork of HSK mainnet — see [docs/PROOF.md](docs/PROOF.md).
+
 > **Hackathon track:** *Agent Payments & A2A Settlement (HSP)* — HSK Chain Horizon Hackathon ·
 > India. Architecture adapted from [`hrishabhayush/wraps`](https://github.com/hrishabhayush/wraps)
 > (x402 agent payments), retargeted to HSK Chain and HSP.
+>
+> **Judges:** start at [docs/JUDGES.md](docs/JUDGES.md) (5-minute path) ·
+> [docs/PROOF.md](docs/PROOF.md) · [docs/CLAIMS.md](docs/CLAIMS.md) · [docs/MCP.md](docs/MCP.md)
 
 ---
 
@@ -28,7 +36,8 @@ gaps:
 | Receiving agent takes payment and never delivers | Funds sit in escrow; `refund` returns them after the delivery deadline |
 | Receiving agent overcharges | The payer signs an exact amount; changing the price invalidates the signature |
 | Signature replayed for another purchase | The EIP-3009 nonce is bound to `(contract, chain, requestId, serviceId)` |
-| Someone squats a payer's request id | Payments are keyed by `(payer, requestId)` |
+| Someone squats a payer's deal slot | Payments are keyed by `(payer, requestId, serviceId)` |
+| HSP settles via its own relayer (it picks the nonce) | The deposit address commits to the terms, so HSP's `transferWithAuthorization` into `pay_to` lands in a vault only `claimDeposit` can move into escrow |
 | Receiving agent trusts a forged "I paid" claim | It reads the escrow state from HSK Chain before delivering |
 | Payer agent has no gas | The receiving agent relays the signed authorization and pays gas |
 | Dispute over what was delivered | `confirmDelivery` anchors a hash of the delivered resource on-chain |
@@ -69,8 +78,9 @@ nothing is fabricated.
 
 ```bash
 pnpm install
-pnpm test                 # 22 TypeScript tests (incl. on-chain integration on a throwaway anvil)
-pnpm contracts:test       # 30 Foundry tests (incl. fuzz)
+pnpm test                 # 28 TypeScript tests (incl. on-chain + MCP integration on a throwaway anvil)
+pnpm contracts:test       # 43 Foundry tests (incl. fuzz)
+pnpm test:fork            # 2 tests against the REAL USDC.e on a fork of HSK mainnet
 ```
 
 **Real on-chain demo, fully local (no wallet, no faucet):**
@@ -88,10 +98,22 @@ pnpm deploy:testnet       # writes deployments/133.json; the server picks it up 
 pnpm dev
 ```
 
-**HSK Chain mainnet (chain 177):** `pnpm deploy:mainnet` (deploys the escrow; set
-`SETTLEMENT_TOKEN` to register services with a mainnet stablecoin).
+**HSK Chain mainnet (chain 177):** fund the deployer `0xBaA9364c59041392b503d4a1A4be6126557FC919`
+with ~3 HSK, then `pnpm deploy:mainnet` — it deploys the escrow and registers the demo
+services against the real USDC.e (`0x054ed458…`), ready for an HSP-into-escrow flow.
 
 Add `?autoplay=1` to the URL for a hands-free demo loop on a projector.
+
+**Drive it from your own agent (MCP):**
+
+```bash
+pnpm mcp                  # Streamable HTTP MCP server on :4200
+claude mcp add --transport http a2a-escrow http://localhost:4200/mcp
+```
+
+Nine tools (`get_chain_config, list_services, get_service, build_authorization,
+relay_settlement, get_payment, confirm_delivery, refund, anchor_external_settlement`); see
+[docs/MCP.md](docs/MCP.md).
 
 ---
 

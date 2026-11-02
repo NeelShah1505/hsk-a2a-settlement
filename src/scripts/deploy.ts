@@ -51,14 +51,19 @@ async function main(): Promise<void> {
   const payerKey = process.env.BURNER_PRIVATE_KEY?.trim();
   const payer = payerKey && /^0x[0-9a-fA-F]{64}$/.test(payerKey) ? privateKeyToAccount(payerKey as Hex).address : "";
 
+  // On mainnet, default to the real HSK-mainnet USDC.e (the token HSP settles in eip3009),
+  // so `pnpm deploy:mainnet` registers the demo services ready for an HSP-into-escrow flow.
+  const HSK_MAINNET_USDCE = "0x054ed45810DbBAb8B27668922D110669c9D88D0a";
+  const settlementToken = process.env.SETTLEMENT_TOKEN ?? (isMainnet ? HSK_MAINNET_USDCE : undefined);
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     DEPLOYER_PRIVATE_KEY: deployerKey,
     DEPLOY_TEST_TOKEN: isMainnet ? (process.env.DEPLOY_TEST_TOKEN ?? "false") : "true",
     PAYER_ADDRESS: payer,
+    ...(settlementToken ? { SETTLEMENT_TOKEN: settlementToken } : {}),
   };
-  if (isMainnet && !process.env.SETTLEMENT_TOKEN) {
-    console.log("No SETTLEMENT_TOKEN set: deploying the escrow without registering services.");
+  if (isMainnet) {
+    console.log(`Settlement token: ${settlementToken} (services registered against it)`);
   }
 
   const args = ["script", "script/Deploy.s.sol", "--rpc-url", network.rpcUrl, "--broadcast"];
