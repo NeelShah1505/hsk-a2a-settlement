@@ -222,6 +222,11 @@ describe.skipIf(!hasAnvil)("MCP server over the on-chain A2A escrow (local anvil
     expect(await balance(settlement)).toBe(0n);
     // The payer never held native gas.
     expect(await publicClient.getBalance({ address: payer.address })).toBe(0n);
+
+    // 7. Settlement-backed reputation moved on the real release.
+    const rep = await callOk<{ released: string; successRateBps: number }>("get_reputation", { provider: provider.address });
+    expect(rep.released).toBe("1");
+    expect(rep.successRateBps).toBe(10000);
   }, 30_000);
 
   it("returns contract reverts as MCP tool errors, not transport failures", async () => {

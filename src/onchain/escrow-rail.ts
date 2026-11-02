@@ -16,7 +16,7 @@ import {
   type TransactionReceipt,
   type WalletClient,
 } from "viem";
-import { a2aSettlementAbi, testUsdcAbi } from "./abi.js";
+import { a2aSettlementAbi, reputationRegistryAbi, testUsdcAbi } from "./abi.js";
 import type { Network } from "./networks.js";
 import type { Eip712Payload } from "../types.js";
 
@@ -256,6 +256,34 @@ export class HskEscrowRail {
       }
       return domain;
     }
+  }
+
+  /** Settlement-backed reputation for a provider (counts/volume of real releases vs refunds). */
+  async getReputation(provider: Address): Promise<{
+    released: bigint;
+    refunded: bigint;
+    volumeReleased: bigint;
+    volumeRefunded: bigint;
+    successRateBps: number;
+    registry: Address;
+  }> {
+    const registry = await this.publicClient.readContract({
+      address: this.settlement,
+      abi: a2aSettlementAbi,
+      functionName: "reputation",
+    });
+    const [score, rateBps] = await Promise.all([
+      this.publicClient.readContract({ address: registry, abi: reputationRegistryAbi, functionName: "scoreOf", args: [provider] }),
+      this.publicClient.readContract({ address: registry, abi: reputationRegistryAbi, functionName: "successRateBps", args: [provider] }),
+    ]);
+    return {
+      released: score.released,
+      refunded: score.refunded,
+      volumeReleased: score.volumeReleased,
+      volumeRefunded: score.volumeRefunded,
+      successRateBps: Number(rateBps),
+      registry,
+    };
   }
 
   /** Relay the payer's signed authorization; the exact price moves into escrow. */

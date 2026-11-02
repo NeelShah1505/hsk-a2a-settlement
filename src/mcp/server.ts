@@ -56,6 +56,7 @@ export const MCP_TOOL_NAMES = [
   "confirm_delivery",
   "refund",
   "anchor_external_settlement",
+  "get_reputation",
 ] as const;
 
 export interface McpServerDeps {
@@ -425,6 +426,29 @@ export function createMcpServer(deps: McpServerDeps, rail: HskEscrowRail = new H
           deliveryHash: delivery_hash as Hex,
         });
         return { ...txView(tx), requestIdHash: toBytes32Id(request_id), serviceIdHash: toBytes32Id(service_id) };
+      }),
+  );
+
+  server.registerTool(
+    "get_reputation",
+    {
+      title: "Get reputation",
+      description:
+        "Settlement-backed reputation for a provider: released/refunded counts, volumes, and success rate (bps). Only the escrow contract can write it, so it reflects real on-chain releases/refunds — not self-reported claims. Read-only.",
+      inputSchema: { provider: address },
+    },
+    ({ provider }) =>
+      guard("get_reputation", async () => {
+        const r = await rail.getReputation(provider);
+        return {
+          provider,
+          registry: r.registry,
+          released: r.released.toString(),
+          refunded: r.refunded.toString(),
+          volumeReleased: r.volumeReleased.toString(),
+          volumeRefunded: r.volumeRefunded.toString(),
+          successRateBps: r.successRateBps,
+        };
       }),
   );
 

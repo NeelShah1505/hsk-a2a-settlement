@@ -42,12 +42,13 @@ never fabricates a payment, signature, tx hash, attribution or status.
 
 | Claim | Tag |
 |---|---|
-| 9-tool MCP server a judge can `claude mcp add` and drive end to end | REPRODUCIBLE (`pnpm mcp`; `tests/mcp.test.ts`) |
+| 10-tool MCP server a judge can `claude mcp add` and drive end to end | REPRODUCIBLE (`pnpm mcp`; `tests/mcp.test.ts`) |
+| Settlement-backed reputation (ERC-8004-style): only the escrow writes it; readable + MCP `get_reputation` | REPRODUCIBLE (`test_Reputation_*`) |
 | Web UI showing both rails, live stages, two approval gates, a receipt with tx hashes | REPRODUCIBLE (`pnpm dev`) |
 | Demo video of a real on-chain purchase | VERIFIED-LIVE (`docs/demo/demo.mp4`, recorded from the running app) |
 
 ## Not claimed
 
-- No live payment through HSP's server. No mainnet transactions yet. No ERC-8004 reputation.
-  No profitability or trading claims. The provider activity counters are self-reportable and
-  are labeled as such in the contract and UI — they are not a trust score.
+- No live payment through HSP's server. No mainnet transactions yet. No profitability or
+  trading claims. Reputation reflects only settled on-chain deals (self-dealing excluded); it is
+  not a predictive credit score and a provider can still choose which deals to take.

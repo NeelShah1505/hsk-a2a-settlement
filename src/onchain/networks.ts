@@ -68,6 +68,8 @@ export interface Deployment {
   payTo: Address;
   testToken: boolean;
   deliveryWindow: number;
+  reputation?: Address;
+  identity?: Address;
 }
 
 export function deploymentPath(chainId: number): string {

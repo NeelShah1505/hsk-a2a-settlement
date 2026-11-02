@@ -41,6 +41,7 @@ gaps:
 | Receiving agent trusts a forged "I paid" claim | It reads the escrow state from HSK Chain before delivering |
 | Payer agent has no gas | The receiving agent relays the signed authorization and pays gas |
 | Dispute over what was delivered | `confirmDelivery` anchors a hash of the delivered resource on-chain |
+| "Can I trust this provider?" | Settlement-backed ERC-8004-style reputation: only the escrow writes it, one record per real release/refund |
 
 Payments settled through the HSP Gateway can be anchored in the same contract
 (`anchorExternalSettlement`), so both rails leave an on-chain receipt.
@@ -79,7 +80,7 @@ nothing is fabricated.
 ```bash
 pnpm install
 pnpm test                 # 28 TypeScript tests (incl. on-chain + MCP integration on a throwaway anvil)
-pnpm contracts:test       # 43 Foundry tests (incl. fuzz)
+pnpm contracts:test       # 45 Foundry tests (incl. fuzz)
 pnpm test:fork            # 2 tests against the REAL USDC.e on a fork of HSK mainnet
 ```
 
@@ -111,8 +112,8 @@ pnpm mcp                  # Streamable HTTP MCP server on :4200
 claude mcp add --transport http a2a-escrow http://localhost:4200/mcp
 ```
 
-Nine tools (`get_chain_config, list_services, get_service, build_authorization,
-relay_settlement, get_payment, confirm_delivery, refund, anchor_external_settlement`); see
+Ten tools (`get_chain_config, list_services, get_service, build_authorization, relay_settlement,
+get_payment, confirm_delivery, refund, anchor_external_settlement, get_reputation`); see
 [docs/MCP.md](docs/MCP.md).
 
 ---
@@ -151,11 +152,13 @@ static-IP box.
 ## Project layout
 
 ```
-contracts/        Foundry: A2ASettlement, TestUSDC (EIP-3009), tests, deploy script
+contracts/        Foundry: A2ASettlement, DepositVault, TestUSDC (EIP-3009), ReputationRegistry +
+                  IdentityRegistry (ERC-8004-style), tests, deploy script
 deployments/      Deployed addresses per chain (written by the deploy script)
 src/
   onchain/        Typed ABIs, HSK Chain networks, HskEscrowRail (viem)
   a2a/            A2A schema, Receiving Agent + catalog, HSP exchange, on-chain exchange
+  onchain/        Typed ABIs, HSK networks, HskEscrowRail (viem) + ERC-8004 Identity/Reputation reads
   hsp/            The 8 HSP tools: typed interface, MCP client, offline mock
   agent/          HSP payment-agent state machine, approvals, receipts, flow events
   signer/         Pluggable signer: burner (viem) + OKX wallet-skill adapter

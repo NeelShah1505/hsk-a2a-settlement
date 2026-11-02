@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC3009} from "./interfaces/IERC3009.sol";
 import {DepositVault} from "./DepositVault.sol";
+import {ReputationRegistry} from "./ReputationRegistry.sol";
 
 /// @title A2ASettlement
 /// @notice Trust-minimized agent-to-agent commerce on HSK Chain.
@@ -71,13 +72,6 @@ contract A2ASettlement is ReentrancyGuard {
         uint64 claimBy; // deposits must be claimed by this timestamp
     }
 
-    struct ProviderActivity {
-        uint256 released;
-        uint256 refunded;
-        uint256 volumeReleased;
-        uint256 volumeRefunded;
-    }
-
     uint64 public constant MIN_DELIVERY_WINDOW = 60;
     uint64 public constant MAX_DELIVERY_WINDOW = 30 days;
 
@@ -85,13 +79,13 @@ contract A2ASettlement is ReentrancyGuard {
     ///         Deposits must never be sent here; it is not a deposit address.
     address public immutable depositVaultImplementation;
 
+    /// @notice Settlement-backed reputation. Only this contract writes to it, one record per
+    ///         settled deal, so scores reflect real releases/refunds — not self-reported claims.
+    ReputationRegistry public immutable reputation;
+
     mapping(bytes32 serviceId => Service) public services;
     mapping(bytes32 key => Payment) private _payments;
     mapping(bytes32 key => bool) public anchored;
-    /// @notice Self-reportable activity counters, NOT a trust score. A provider can inflate
-    ///         released/volumeReleased by paying itself; self-dealing (payer == provider or
-    ///         payer == payTo) is excluded from the counters, which stops only the lazy case.
-    mapping(address provider => ProviderActivity) public providerActivity;
 
     event ServiceRegistered(
         bytes32 indexed serviceId,
@@ -153,6 +147,7 @@ contract A2ASettlement is ReentrancyGuard {
 
     constructor() {
         depositVaultImplementation = address(new DepositVault());
+        reputation = new ReputationRegistry(address(this));
     }
 
     // ─────────────────────────────── services ───────────────────────────────
@@ -365,9 +360,7 @@ contract A2ASettlement is ReentrancyGuard {
         IERC20(p.token).safeTransfer(p.payTo, p.amount);
 
         if (p.payer != svc.provider && p.payer != p.payTo) {
-            ProviderActivity storage a = providerActivity[svc.provider];
-            a.released += 1;
-            a.volumeReleased += p.amount;
+            reputation.record(svc.provider, payer, serviceId, p.amount, ReputationRegistry.Outcome.Released, deliveryHash);
         }
 
         emit PaymentReleased(requestId, serviceId, payer, p.payTo, p.amount, deliveryHash);
@@ -385,9 +378,7 @@ contract A2ASettlement is ReentrancyGuard {
 
         address provider = services[serviceId].provider;
         if (payer != provider && payer != p.payTo) {
-            ProviderActivity storage a = providerActivity[provider];
-            a.refunded += 1;
-            a.volumeRefunded += p.amount;
+            reputation.record(provider, payer, serviceId, p.amount, ReputationRegistry.Outcome.Refunded, bytes32(0));
         }
 
         emit PaymentRefunded(requestId, serviceId, payer, p.amount);

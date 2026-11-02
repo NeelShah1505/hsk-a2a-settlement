@@ -5,6 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 import {A2ASettlement} from "../src/A2ASettlement.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
+import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 
 /// @notice Deploys A2ASettlement (and TestUSDC on test networks), registers the demo
 ///         services, and writes addresses to ../deployments/<chainId>.json.
@@ -37,6 +38,7 @@ contract Deploy is Script {
         }
 
         A2ASettlement settlement = new A2ASettlement();
+        IdentityRegistry identity = new IdentityRegistry();
 
         // Prices in token units (6 decimals): 1 and 2 stablecoin units.
         if (token != address(0)) {
@@ -46,7 +48,10 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
+        address reputation = address(settlement.reputation());
         console2.log("A2ASettlement:", address(settlement));
+        console2.log("Reputation:   ", reputation);
+        console2.log("Identity:     ", address(identity));
         console2.log("Token:        ", token);
 
         // Only record real deployments: a dry run must never produce a deployment file.
@@ -64,6 +69,8 @@ contract Deploy is Script {
         vm.serializeBool(obj, "testToken", deployTestToken);
         vm.serializeUint(obj, "deliveryWindow", window);
         vm.serializeUint(obj, "deployedAtBlock", block.number);
+        vm.serializeAddress(obj, "reputation", reputation);
+        vm.serializeAddress(obj, "identity", address(identity));
         string memory json = vm.serializeAddress(obj, "settlement", address(settlement));
         string memory path = string.concat(vm.projectRoot(), "/../deployments/", vm.toString(block.chainid), ".json");
         vm.writeJson(json, path);

@@ -20,7 +20,7 @@
   it is achievable, and it is a gap for us.
 - **Escrow is common, not our moat:** Nundina, Sealed, devx-agenttab, slaa, Proviso, Lamplight.
 - **ERC-8004 on-chain reputation is everywhere:** Nundina, Kohaku, Spawn, tessera, slaa, Proviso,
-  Avow. Judges are seeing it repeatedly. **We don't have it.**
+  Avow. We NOW match this: a settlement-backed ReputationRegistry + IdentityRegistry (added after this scan).
 - **Real LLM agents are common:** Nundina (Claude), Sealed (Gemini), Kohaku (Claude), SafeFlow
   (OpenAI/Anthropic), skymiss (Qwen), Credence (Groq). **Our "agent" is deterministic
   orchestration** — thin for a track literally called *Agent* Payments.
@@ -61,7 +61,7 @@ Operator-gated (do these or we can't place):
 3. **Get HSP allowlist / credentials** (tessera + Credence did). Unlocks a live HSP settlement.
 
 Non-blocked (agent builds these):
-4. **ERC-8004 identity + reputation**, written from settled escrows — the most common thing we lack.
+4. ~~ERC-8004 identity + reputation~~ — DONE: settlement-backed ReputationRegistry + IdentityRegistry, written from real releases/refunds, drivable via MCP `get_reputation`.
 5. **A real LLM payment agent** (NL intent → policy → escrow flow), pluggable behind an API key.
 6. **Expose the deposit/HSP-into-escrow rail in the MCP server and UI** so the differentiator is drivable, not just a test.
 7. **Deepen tests** toward the top of the field; keep the honesty discipline (it is itself a differentiator).

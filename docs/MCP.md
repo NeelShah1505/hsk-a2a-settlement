@@ -1,6 +1,6 @@
 # A2A escrow as an MCP server
 
-`src/mcp/server.ts` exposes the on-chain A2A escrow (`A2ASettlement` on HSK Chain) as nine MCP
+`src/mcp/server.ts` exposes the on-chain A2A escrow (`A2ASettlement` on HSK Chain) as ten MCP
 tools over Streamable HTTP, so a purchase can be driven from Claude Code, Cursor, the MCP
 Inspector, or any other MCP client.
 
@@ -88,10 +88,11 @@ strings. Every result is JSON in a text block and, for clients that read it, in
 | `get_service(service_id)` | read | One service, catalog + on-chain |
 | `build_authorization(service_id, request_id, payer, valid_for_seconds?)` | read | EIP-3009 `ReceiveWithAuthorization` typed data for the payer to sign, plus `requestIdHash`, `serviceIdHash`, `validAfter`, `validBefore`, `token_total_raw`, `amount`, `payerFunded`. Never signs |
 | `relay_settlement(service_id, request_id, payer, valid_after, valid_before, signature)` | **tx** | Relayer submits the signed authorization; the exact price moves into escrow. Returns tx hash, explorer url, payment |
-| `get_payment(request_id, payer)` | read | Escrow record: status `none/escrowed/released/refunded`, amount, deadline, deliveryHash |
-| `confirm_delivery(request_id, payer, delivery_hash)` | **tx**, provider-only | Anchors the delivered resource's hash and releases escrow to `payTo` |
-| `refund(request_id, payer)` | **tx** | Returns an undelivered escrow to the payer after its deadline (anyone may call) |
+| `get_payment(request_id, service_id, payer)` | read | Escrow record: status `none/escrowed/released/refunded`, amount, deadline, deliveryHash |
+| `confirm_delivery(request_id, service_id, payer, delivery_hash)` | **tx**, provider-only | Anchors the delivered resource's hash and releases escrow to `payTo` |
+| `refund(request_id, service_id, payer)` | **tx** | Returns an undelivered escrow to the payer after its deadline (anyone may call) |
 | `anchor_external_settlement(request_id, service_id, payer, amount_raw, rail, external_ref, delivery_hash)` | **tx**, provider-only | Records a payment settled elsewhere (e.g. the HSP Gateway) as an on-chain receipt; moves no funds |
+| `get_reputation(provider)` | read | Settlement-backed reputation: released/refunded counts, volumes, success rate (bps). Only the escrow writes it |
 
 Address inputs are checksummed on the way in; `delivery_hash` is a 32-byte hex;
 `signature` is the 65-byte (or 64-byte compact) ECDSA signature from the payer wallet.
@@ -188,7 +189,7 @@ unknown payment returns a tool error such as
 
 `tests/mcp.test.ts` starts the server in-process on a random port against a throwaway anvil
 chain (skipped when `anvil` is not installed), connects with the SDK `Client` +
-`StreamableHTTPClientTransport`, checks the nine tool names, and runs the full
+`StreamableHTTPClientTransport`, checks the ten tool names, and runs the full
 build → sign → relay → confirm path plus the error cases above.
 
 ```bash

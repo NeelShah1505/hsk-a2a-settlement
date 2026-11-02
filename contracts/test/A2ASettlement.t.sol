@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {A2ASettlement} from "../src/A2ASettlement.sol";
 import {DepositVault} from "../src/DepositVault.sol";
+import {ReputationRegistry} from "../src/ReputationRegistry.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -189,9 +190,9 @@ contract A2ASettlementTest is Test {
         assertEq(uint8(p.status), uint8(A2ASettlement.Status.Released));
         assertEq(p.deliveryHash, h);
 
-        (uint256 released,, uint256 vol,) = settlement.providerActivity(provider);
-        assertEq(released, 1);
-        assertEq(vol, PRICE);
+        ReputationRegistry.Score memory sc = settlement.reputation().scoreOf(provider);
+        assertEq(sc.released, 1);
+        assertEq(sc.volumeReleased, PRICE);
     }
 
     function test_RevertWhen_NonProviderConfirms() public {
@@ -231,9 +232,9 @@ contract A2ASettlementTest is Test {
 
         assertEq(usdc.balanceOf(payer), payerBefore);
         assertEq(uint8(settlement.getPayment(payer, REQ, SERVICE).status), uint8(A2ASettlement.Status.Refunded));
-        (, uint256 refunded,, uint256 volRef) = settlement.providerActivity(provider);
-        assertEq(refunded, 1);
-        assertEq(volRef, PRICE);
+        ReputationRegistry.Score memory sc = settlement.reputation().scoreOf(provider);
+        assertEq(sc.refunded, 1);
+        assertEq(sc.volumeRefunded, PRICE);
     }
 
     function test_RevertWhen_DoubleRefundOrDeliverAfterRefund() public {
@@ -424,6 +425,46 @@ contract A2ASettlementTest is Test {
         (, bal,, claimable,) = settlement.depositStatus(t);
         assertEq(bal, PRICE);
         assertTrue(claimable);
+    }
+
+    // ─────────────────────────── reputation ───────────────────────────
+
+    function test_Reputation_OnlySettlementCanWrite() public {
+        ReputationRegistry rep = settlement.reputation();
+        assertEq(rep.settlement(), address(settlement));
+        vm.prank(address(0xBAD));
+        vm.expectRevert(ReputationRegistry.NotSettlement.selector);
+        rep.record(provider, payer, SERVICE, PRICE, ReputationRegistry.Outcome.Released, keccak256("x"));
+    }
+
+    function test_Reputation_SuccessRateAndSelfDealingExcluded() public {
+        // One honest release, one timeout refund → 50% success rate.
+        _escrow(REQ);
+        vm.prank(provider);
+        settlement.confirmDelivery(payer, REQ, SERVICE, keccak256("r"));
+
+        bytes32 req2 = keccak256("request-2");
+        _escrow(req2);
+        vm.warp(block.timestamp + WINDOW + 1);
+        settlement.refund(payer, req2, SERVICE);
+
+        ReputationRegistry rep = settlement.reputation();
+        ReputationRegistry.Score memory sc = rep.scoreOf(provider);
+        assertEq(sc.released, 1);
+        assertEq(sc.refunded, 1);
+        assertEq(rep.successRateBps(provider), 5_000);
+
+        // A provider paying itself must not move its own reputation.
+        bytes32 selfSvc = keccak256("self");
+        vm.prank(provider);
+        settlement.registerService(selfSvc, provider, address(usdc), PRICE, WINDOW);
+        usdc.mint(provider, PRICE);
+        vm.startPrank(provider);
+        usdc.approve(address(settlement), PRICE);
+        settlement.settle(keccak256("self-req"), selfSvc);
+        settlement.confirmDelivery(provider, keccak256("self-req"), selfSvc, keccak256("r"));
+        vm.stopPrank();
+        assertEq(rep.scoreOf(provider).released, 1, "self-dealing excluded");
     }
 
     // ─────────────────────────── external anchoring ───────────────────────────
