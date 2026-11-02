@@ -23,6 +23,20 @@ USDC.e contract on a fork of HSK mainnet — see [docs/PROOF.md](docs/PROOF.md).
 > **Judges:** start at [docs/JUDGES.md](docs/JUDGES.md) (5-minute path) ·
 > [docs/PROOF.md](docs/PROOF.md) · [docs/CLAIMS.md](docs/CLAIMS.md) · [docs/MCP.md](docs/MCP.md)
 
+## Status
+
+**Done & tested (45 Foundry + 28 TS + 2 mainnet-fork, all green):** the escrow with three
+funding rails (EIP-3009 gasless, approval, terms-committed deposit vaults); HSP-into-escrow
+proven on a fork of HSK mainnet with the **real USDC.e**; settlement-backed ERC-8004-style
+reputation + identity; a 10-tool MCP server; the two-rail web UI; a demo video; and the judge
+evidence pack. Every claim is tagged in [docs/CLAIMS.md](docs/CLAIMS.md).
+
+**Pending external grants (one command / one request each):**
+- **Mainnet deploy (177)** — fund `0xBaA9364c59041392b503d4a1A4be6126557FC919` with ~4 HSK, then `pnpm deploy:mainnet`.
+- **Live HSP-server settlement** — needs HashKey to allowlist our IP / issue merchant credentials.
+
+See [docs/COMPETITION.md](docs/COMPETITION.md) for where this stands against the field.
+
 ---
 
 ## Why escrow
