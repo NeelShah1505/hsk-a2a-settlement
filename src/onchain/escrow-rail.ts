@@ -59,6 +59,30 @@ export interface SignedAuthorization {
   signature: Hex;
 }
 
+/** Deal terms a deposit address commits to (mirrors A2ASettlement.DepositTerms). */
+export interface DepositTerms {
+  payer: Address;
+  requestId: Hex;
+  serviceId: Hex;
+  token: Address;
+  price: bigint;
+  deliveryWindow: number;
+  claimBy: bigint;
+}
+
+/** Shape DepositTerms for the contract call (uint64 fields as bigint). */
+function toContractTerms(t: DepositTerms) {
+  return {
+    payer: t.payer,
+    requestId: t.requestId,
+    serviceId: t.serviceId,
+    token: t.token,
+    price: t.price,
+    deliveryWindow: BigInt(t.deliveryWindow),
+    claimBy: t.claimBy,
+  } as const;
+}
+
 export interface TxResult {
   hash: Hash;
   receipt: TransactionReceipt;
@@ -125,12 +149,12 @@ export class HskEscrowRail {
     });
   }
 
-  async getPayment(payer: Address, requestId: Hex): Promise<OnchainPayment> {
+  async getPayment(payer: Address, requestId: Hex, serviceId: Hex): Promise<OnchainPayment> {
     const p = await this.publicClient.readContract({
       address: this.settlement,
       abi: a2aSettlementAbi,
       functionName: "getPayment",
-      args: [payer, requestId],
+      args: [payer, requestId, serviceId],
     });
     return {
       serviceId: p.serviceId,
@@ -249,25 +273,78 @@ export class HskEscrowRail {
   }
 
   /** Provider confirms delivery with a hash of the delivered resource; releases escrow. */
-  async confirmDelivery(payer: Address, requestId: Hex, deliveryHash: Hex): Promise<TxResult> {
+  async confirmDelivery(payer: Address, requestId: Hex, serviceId: Hex, deliveryHash: Hex): Promise<TxResult> {
     const { request } = await this.publicClient.simulateContract({
       account: this.relayer,
       address: this.settlement,
       abi: a2aSettlementAbi,
       functionName: "confirmDelivery",
-      args: [payer, requestId, deliveryHash],
+      args: [payer, requestId, serviceId, deliveryHash],
     });
     return this.send(await this.wallet.writeContract(request));
   }
 
   /** Refund an expired, undelivered escrow back to the payer (callable by anyone). */
-  async refund(payer: Address, requestId: Hex): Promise<TxResult> {
+  async refund(payer: Address, requestId: Hex, serviceId: Hex): Promise<TxResult> {
     const { request } = await this.publicClient.simulateContract({
       account: this.relayer,
       address: this.settlement,
       abi: a2aSettlementAbi,
       functionName: "refund",
-      args: [payer, requestId],
+      args: [payer, requestId, serviceId],
+    });
+    return this.send(await this.wallet.writeContract(request));
+  }
+
+  // ─────────────────────────── deposit-vault rail ───────────────────────────
+
+  /** The deterministic deposit address for a set of terms — use as the HSP order pay_to. */
+  async depositAddress(terms: DepositTerms): Promise<Address> {
+    return this.publicClient.readContract({
+      address: this.settlement,
+      abi: a2aSettlementAbi,
+      functionName: "depositAddress",
+      args: [toContractTerms(terms)],
+    });
+  }
+
+  /** Vault, balance, whether the clone is deployed, whether a claim would succeed, status. */
+  async depositStatus(terms: DepositTerms): Promise<{
+    vault: Address;
+    balance: bigint;
+    deployed: boolean;
+    claimable: boolean;
+    status: EscrowStatusName;
+  }> {
+    const [vault, balance, deployed, claimable, status] = await this.publicClient.readContract({
+      address: this.settlement,
+      abi: a2aSettlementAbi,
+      functionName: "depositStatus",
+      args: [toContractTerms(terms)],
+    });
+    return { vault, balance, deployed, claimable, status: EscrowStatus[status] ?? "none" };
+  }
+
+  /** Claim a terms-committed deposit into escrow (provider or payer). */
+  async claimDeposit(terms: DepositTerms): Promise<TxResult> {
+    const { request } = await this.publicClient.simulateContract({
+      account: this.relayer,
+      address: this.settlement,
+      abi: a2aSettlementAbi,
+      functionName: "claimDeposit",
+      args: [toContractTerms(terms)],
+    });
+    return this.send(await this.wallet.writeContract(request));
+  }
+
+  /** Return tokens sitting in a deposit vault to the terms-bound payer. */
+  async refundExcessDeposit(terms: DepositTerms, recoverToken?: Address): Promise<TxResult> {
+    const { request } = await this.publicClient.simulateContract({
+      account: this.relayer,
+      address: this.settlement,
+      abi: a2aSettlementAbi,
+      functionName: "refundExcessDeposit",
+      args: [toContractTerms(terms), recoverToken ?? terms.token],
     });
     return this.send(await this.wallet.writeContract(request));
   }

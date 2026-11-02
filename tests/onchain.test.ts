@@ -12,7 +12,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { a2aSettlementAbi, a2aSettlementBytecode, testUsdcAbi, testUsdcBytecode } from "../src/onchain/abi.js";
-import { HskEscrowRail } from "../src/onchain/escrow-rail.js";
+import { HskEscrowRail, toBytes32Id } from "../src/onchain/escrow-rail.js";
 import type { Network } from "../src/onchain/networks.js";
 import { OnchainA2AExchange } from "../src/a2a/onchain-exchange.js";
 import { ReceivingAgent } from "../src/a2a/receiving-agent.js";
@@ -110,7 +110,7 @@ describe.skipIf(!hasAnvil)("on-chain A2A escrow (local anvil)", () => {
       address: settlement,
       abi: a2aSettlementAbi,
       functionName: "getPayment",
-      args: [payer.address, result.requestId],
+      args: [payer.address, result.requestId, toBytes32Id("hsk-market-snapshot")],
     });
     expect(onchain.status).toBe(2); // Released
     expect(onchain.deliveryHash).toBe(result.deliveryHash);

@@ -200,7 +200,7 @@ export class OnchainA2AExchange {
     this.emit({ type: "submitted", at: now(), status: "escrow-submitted" });
 
     // 7. The Receiving Agent verifies the escrow on-chain instead of trusting the payer.
-    const payment = await this.rail.getPayment(payer, requestId);
+    const payment = await this.rail.getPayment(payer, requestId, serviceHash);
     const verified =
       payment.status === "escrowed" &&
       payment.amount === svc.price &&
@@ -231,7 +231,7 @@ export class OnchainA2AExchange {
     // 8. Deliver, then release escrow with a hash of exactly what was delivered.
     const resource = this.receiving.deliver(serviceId);
     const deliveryHash = keccak256(toBytes(JSON.stringify(resource)));
-    const release = await this.rail.confirmDelivery(payer, requestId, deliveryHash);
+    const release = await this.rail.confirmDelivery(payer, requestId, serviceHash, deliveryHash);
     this.tx("release", release.hash);
     this.emit({
       type: "resource_delivered",

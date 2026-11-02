@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "tsx watch src/server/server.ts",
     "server": "tsx src/server/server.ts",
+    "mcp": "tsx src/mcp/server.ts",
     "demo": "tsx src/demo.ts",
     "connect": "tsx src/scripts/connect.ts",
     "pay": "tsx src/scripts/pay.ts",
