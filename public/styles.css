@@ -970,6 +970,97 @@ body {
 }
 .footer-sep { opacity: 0.5; }
 
+/* ───────────── settlement rail toggle ───────────── */
+.rail-toggle {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.rail-toggle legend {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--fg-dim);
+  margin-bottom: 6px;
+  padding: 0;
+}
+.rail-opt {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--seam);
+  border-radius: var(--r-sm);
+  background: var(--ink-2);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.rail-opt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.rail-opt:hover {
+  border-color: var(--seam-bright);
+}
+.rail-opt:has(input:checked) {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 9%, var(--ink-2));
+}
+.rail-opt:has(input[value="hsp"]:checked) {
+  border-color: var(--inflight);
+  background: color-mix(in srgb, var(--inflight) 9%, var(--ink-2));
+}
+.rail-opt:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.rail-opt .rail-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.rail-opt small {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.rail-opt.is-unavailable {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.rail-note {
+  margin: -4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-dim);
+}
+.rail-note a,
+.tape-tx,
+.receipt dd a {
+  color: var(--inflight);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--inflight) 40%, transparent);
+}
+.rail-note a:hover,
+.tape-tx:hover {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+.tape-tx {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.receipt dd a {
+  color: #1d5fa8;
+  border-bottom-color: #9bb8dc;
+  word-break: break-all;
+}
+.receipt dd a:hover {
+  color: #0e3b6e;
+}
+
 /* ───────────── service picker ───────────── */
 .services {
   border: 1px solid var(--seam);

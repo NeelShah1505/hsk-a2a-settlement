@@ -89,6 +89,14 @@ export class ReceivingAgent {
     );
   }
 
+  /**
+   * Deliver a resource after the caller has verified settlement independently (e.g. the
+   * on-chain escrow rail reads the escrow state from HSK Chain rather than trusting the payer).
+   */
+  deliver(serviceId: string): ResourcePayload {
+    return this.getService(serviceId).deliver();
+  }
+
   /** Verify the settlement proof and release the resource if it checks out. */
   fulfill(serviceId: string, proof: SettlementProof): FulfillResult {
     const svc = this.getService(serviceId);

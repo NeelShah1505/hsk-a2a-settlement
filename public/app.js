@@ -2,17 +2,31 @@
 // Drives the pipeline, the two authorization gates, the event tape, and the receipt
 // from the server's SSE flow events. No build step; plain ES modules.
 
-const STAGES = [
-  { id: "a2a", title: "A2A request", detail: "Receiving agent transmits conditions" },
-  { id: "config", title: "Chain config", detail: "get_chain_config — authoritative" },
-  { id: "order", title: "Create order", detail: "x402 cart mandate" },
-  { id: "quote", title: "Prepare quote", detail: "EIP-712 + token_total_raw" },
-  { id: "sign", title: "Authorize & sign", detail: "human key · 1 of 2" },
-  { id: "finalize", title: "Finalize", detail: "payment mandate (JWT)" },
-  { id: "submit", title: "Authorize & submit", detail: "human key · 2 of 2 → Gateway" },
-  { id: "settle", title: "Settle on-chain", detail: "query_payment" },
-  { id: "deliver", title: "Deliver resource", detail: "service released on settlement" },
-];
+// Same nine stage ids for both rails; the labels describe what each rail actually does.
+const STAGE_SETS = {
+  hsp: [
+    { id: "a2a", title: "A2A request", detail: "Receiving agent transmits conditions" },
+    { id: "config", title: "Chain config", detail: "get_chain_config — authoritative" },
+    { id: "order", title: "Create order", detail: "x402 cart mandate" },
+    { id: "quote", title: "Prepare quote", detail: "EIP-712 + token_total_raw" },
+    { id: "sign", title: "Authorize & sign", detail: "human key · 1 of 2" },
+    { id: "finalize", title: "Finalize", detail: "payment mandate (JWT)" },
+    { id: "submit", title: "Authorize & submit", detail: "human key · 2 of 2 → Gateway" },
+    { id: "settle", title: "Settle on-chain", detail: "query_payment" },
+    { id: "deliver", title: "Deliver resource", detail: "service released on settlement" },
+  ],
+  onchain: [
+    { id: "a2a", title: "A2A request", detail: "Receiving agent transmits conditions" },
+    { id: "config", title: "Read service on-chain", detail: "price, token, payout from A2ASettlement" },
+    { id: "order", title: "Bind request on-chain", detail: "request id → escrow key" },
+    { id: "quote", title: "EIP-3009 authorization", detail: "nonce bound to this request + service" },
+    { id: "sign", title: "Authorize & sign", detail: "human key · 1 of 2 · payer needs no gas" },
+    { id: "finalize", title: "Hand to receiving agent", detail: "signed authorization over A2A" },
+    { id: "submit", title: "Authorize relay", detail: "human key · 2 of 2 → escrow on HSK Chain" },
+    { id: "settle", title: "Escrow verified on-chain", detail: "receiving agent reads the escrow state" },
+    { id: "deliver", title: "Deliver & release", detail: "resource hash anchored, funds released" },
+  ],
+};
 
 const $ = (sel) => document.querySelector(sel);
 const el = {
@@ -59,9 +73,15 @@ const el = {
   factProtocol: $("#fact-protocol"),
   paytoInput: $("#in-payto"),
   paytoHint: $("#payto-hint"),
+  railToggle: $("#rail-toggle"),
+  railNote: $("#rail-note"),
+  receiptTitle: $("#receipt-title"),
 };
 
 let mode = "mock";
+let rail = "hsp"; // "onchain" | "hsp"
+let railInfo = { onchain: { available: false }, hsp: { mode: "mock" } };
+let running = false;
 let session = null;
 let evtSource = null;
 let pendingTimer = null;
@@ -73,7 +93,7 @@ let completed = false;
 
 function buildPipeline() {
   el.pipeline.innerHTML = "";
-  for (const s of STAGES) {
+  for (const s of STAGE_SETS[rail]) {
     const li = document.createElement("li");
     li.className = "stage-row";
     li.id = `stage-${s.id}`;
@@ -139,15 +159,15 @@ function fireWire() {
 // ───────────────────────── tape ─────────────────────────
 
 const TONE = {
-  ok: new Set(["order_created", "signed", "finalized", "submitted"]),
-  warn: new Set(["quote_reprepared"]),
+  ok: new Set(["order_created", "signed", "finalized", "submitted", "onchain_tx", "resource_delivered"]),
+  warn: new Set(["quote_reprepared", "resource_denied"]),
   fail: new Set(["error"]),
   auth: new Set(["approval_requested"]),
 };
 
 function toneFor(e) {
   if (e.type === "terminal") {
-    if (e.status === "payment-finalized") return "ok";
+    if (e.status === "payment-finalized" || e.status === "payment-escrowed") return "ok";
     if (e.status === "payment-failed") return "fail";
     return "warn";
   }
@@ -173,6 +193,23 @@ function tape(e, msg) {
   li.querySelector(".tape-msg").textContent = msg ? ` ${msg}` : "";
   el.tape.appendChild(li);
   el.tape.scrollTop = el.tape.scrollHeight;
+  return li;
+}
+
+/** A tape line for a real transaction, linking to the block explorer when known. */
+function tapeTx(e) {
+  const li = tape(e, `${e.label} · ${e.network}`);
+  const body = li.querySelector(".tape-body");
+  const node = e.explorerUrl ? document.createElement("a") : document.createElement("span");
+  node.className = "tape-tx";
+  node.textContent = `${short(e.hash)}${e.explorerUrl ? " ↗" : ""}`;
+  if (e.explorerUrl) {
+    node.href = e.explorerUrl;
+    node.target = "_blank";
+    node.rel = "noopener noreferrer";
+    node.title = `View ${e.label} transaction on the explorer`;
+  }
+  body.append(" ", node);
 }
 
 function short(addr) {
@@ -212,9 +249,14 @@ function applyEvent(e) {
       break;
 
     case "order_created":
-      setStage("order", "done", { detail: `flow_id ${short(e.flowId)}`, chip: "created" });
+      if (rail === "onchain") {
+        setStage("order", "done", { detail: `request ${short(e.flowId)} · escrow ${short(e.paymentRequestId)}`, chip: "bound" });
+        tape(e, `request=${e.flowId}`);
+      } else {
+        setStage("order", "done", { detail: `flow_id ${short(e.flowId)}`, chip: "created" });
+        tape(e, `flow_id=${e.flowId}`);
+      }
       setStage("quote", "active");
-      tape(e, `flow_id=${e.flowId}`);
       break;
 
     case "quote_prepared":
@@ -249,13 +291,23 @@ function applyEvent(e) {
 
     case "finalized":
       setStage("sign", "done", { chip: "signed" });
-      setStage("finalize", "done", { chip: "finalized" });
+      setStage("finalize", "done", { chip: rail === "onchain" ? "handed over" : "finalized" });
       setStage("submit", "active");
-      tape(e, "payment mandate assembled");
+      tape(e, rail === "onchain" ? "signed authorization handed to the receiving agent" : "payment mandate assembled");
+      break;
+
+    case "onchain_tx":
+      tapeTx(e);
+      if (e.label === "escrow") {
+        setStage("submit", "done", { detail: `escrow tx ${short(e.hash)}`, chip: "relayed" });
+        setStage("settle", "active", { detail: "verifying escrow on-chain…" });
+      } else if (e.label === "release") {
+        setStage("deliver", "active", { detail: `release tx ${short(e.hash)}`, chip: "releasing" });
+      }
       break;
 
     case "submitted":
-      setStage("submit", "done", { chip: "submitted" });
+      setStage("submit", "done", { chip: rail === "onchain" ? "relayed" : "submitted" });
       setStage("settle", "active", { detail: e.status });
       tape(e, e.status);
       break;
@@ -274,7 +326,8 @@ function applyEvent(e) {
 
     case "terminal": {
       const st = e.status;
-      const settleState = st === "payment-finalized" ? "done" : st === "payment-failed" ? "fail" : "warn";
+      const ok = st === "payment-finalized" || st === "payment-escrowed";
+      const settleState = ok ? "done" : st === "payment-failed" ? "fail" : "warn";
       setStage("settle", settleState, { detail: st, chip: st.replace("payment-", "") });
       // The delivery step now runs: the Receiving Agent verifies and releases (or not).
       setStage("deliver", "active", { chip: "verifying" });
@@ -285,7 +338,7 @@ function applyEvent(e) {
     }
 
     case "resource_delivered":
-      setStage("deliver", "done", { detail: e.title, chip: "delivered" });
+      setStage("deliver", "done", { detail: e.title, chip: rail === "onchain" ? "released" : "delivered" });
       renderResource(e, false);
       tape(e, e.title);
       break;
@@ -339,10 +392,15 @@ function showGate(e) {
   ensureAuthFill();
   holdResolved = false;
   const isSign = e.stage === "sign";
-  el.gateTitle.textContent = isSign ? "Authorize to sign" : "Authorize to submit";
+  const onchain = rail === "onchain";
+  el.gateTitle.textContent = isSign ? "Authorize to sign" : onchain ? "Authorize the escrow relay" : "Authorize to submit";
   el.gateSub.textContent = isSign
-    ? "You are authorizing the EIP-712 signature. Review before you hold."
-    : "You are authorizing submission to the HSP Gateway. Review once more.";
+    ? onchain
+      ? "You are signing a gasless EIP-3009 authorization bound to this exact request. Review before you hold."
+      : "You are authorizing the EIP-712 signature. Review before you hold."
+    : onchain
+      ? "The receiving agent will relay your signature and lock the funds in escrow on HSK Chain."
+      : "You are authorizing submission to the HSP Gateway. Review once more.";
   el.gatePayto.textContent = e.payTo;
   el.gatePayer.textContent = e.payer;
   el.gateRaw.textContent = e.tokenTotalRaw;
@@ -424,7 +482,9 @@ async function resolveApproval(approved) {
 
 function renderReceipt(qaText) {
   if (!qaText) return;
-  const lines = qaText.split("\n").filter((l) => l.includes(":") && !l.startsWith("HSP Agentic"));
+  const [title, ...rest] = qaText.split("\n");
+  el.receiptTitle.textContent = title || "Settlement receipt";
+  const lines = rest.filter((l) => l.includes(":"));
   el.receiptBody.innerHTML = "";
   let status = "";
   for (const line of lines) {
@@ -435,22 +495,34 @@ function renderReceipt(qaText) {
     const dt = document.createElement("dt");
     dt.textContent = key;
     const dd = document.createElement("dd");
-    dd.textContent = val || "unavailable";
+    if (/^https?:\/\//.test(val)) {
+      const a = document.createElement("a");
+      a.href = val;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = `${val} ↗`;
+      dd.appendChild(a);
+    } else {
+      dd.textContent = val || "unavailable";
+    }
     if (/payment status/i.test(key)) {
       status = val;
-      if (val === "payment-finalized") dd.className = "status-finalized";
+      if (val === "payment-finalized" || val === "payment-released") dd.className = "status-finalized";
       else if (val === "payment-safe") dd.className = "status-safe";
       else if (val === "payment-failed") dd.className = "status-failed";
     }
     div.append(dt, dd);
     el.receiptBody.appendChild(div);
   }
+  const net = railInfo.onchain?.label ?? "HSK Chain";
   el.receiptFoot.textContent =
-    mode === "mock"
-      ? "Mock run — offline simulation of the HSP flow. Not a real on-chain payment. Switch to HSP_MODE=live (allowlisted IP + funded wallet) to settle for real."
-      : status === "payment-finalized"
-        ? "Final confirmation reached on HashKey via the HSP Gateway."
-        : "Live HSP result. Status is reported exactly as returned — never inferred.";
+    status === "payment-released"
+      ? `Real transactions on ${net}. The receiving agent verified the escrow on-chain before delivering; the delivery hash is anchored in the release transaction.`
+      : mode === "mock"
+        ? "Mock run — offline simulation of the HSP flow. Not a real on-chain payment. Use the HSK Chain escrow rail for real transactions, or HSP_MODE=live (allowlisted IP + funded wallet)."
+        : status === "payment-finalized"
+          ? "Final confirmation reached on HashKey via the HSP Gateway."
+          : "Live HSP result. Status is reported exactly as returned — never inferred.";
   el.receipt.hidden = false;
   el.receipt.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -464,7 +536,9 @@ function renderResource(e, denied) {
   } else {
     el.resourceTitle.textContent = e.title ?? "Resource delivered";
     el.resourceSub.textContent =
-      "The Receiving Agent verified settlement and released the resource to the Payment Agent.";
+      rail === "onchain"
+        ? "The Receiving Agent verified the escrow on HSK Chain, delivered this resource, and anchored its hash to release the funds."
+        : "The Receiving Agent verified settlement and released the resource to the Payment Agent.";
     el.resourceBody.textContent = formatResourceBody(e.contentType, e.body);
   }
   el.resource.hidden = false;
@@ -548,10 +622,13 @@ function finishRun() {
 }
 
 function setBusy(busy) {
+  running = busy;
   el.initiateBtn.disabled = busy;
   el.initiateBtn.classList.toggle("is-busy", busy);
   el.initiateBtn.querySelector(".btn-label").textContent = busy ? "Running…" : "Initiate payment";
   el.form.querySelectorAll("input").forEach((i) => (i.disabled = busy));
+  // The on-chain rail pays the provider registered in the contract, so pay_to stays locked.
+  if (!busy && rail === "onchain") el.paytoInput.disabled = true;
 }
 
 async function startRun(evt) {
@@ -561,6 +638,7 @@ async function startRun(evt) {
   el.initiateNote.classList.remove("is-error");
 
   const body = {
+    rail,
     merchantName: $("#in-merchant").value.trim(),
     payTo: el.paytoInput.value.trim(),
     serviceId: selectedServiceId(),
@@ -648,19 +726,85 @@ function subscribe(id) {
 // ───────────────────────── wiring ─────────────────────────
 
 async function loadMode() {
+  let defaultRail = "hsp";
   try {
-    const { mode: m } = await fetch("/api/mode").then((r) => r.json());
-    mode = m || "mock";
+    const data = await fetch("/api/mode").then((r) => r.json());
+    mode = data.mode || "mock";
+    railInfo = data.rails ?? railInfo;
+    defaultRail = data.defaultRail === "onchain" ? "onchain" : "hsp";
   } catch {
     mode = "mock";
   }
-  el.modeLabel.textContent = mode;
-  el.modeBadge.classList.toggle("mode-live", mode === "live");
-  el.modeBadge.classList.toggle("mode-mock", mode !== "live");
+  const onchainRadio = el.railToggle.querySelector('input[value="onchain"]');
+  const onchainOpt = onchainRadio.closest(".rail-opt");
+  const oc = railInfo.onchain ?? {};
+  onchainRadio.disabled = !oc.available;
+  onchainOpt.classList.toggle("is-unavailable", !oc.available);
+  onchainOpt.querySelector("small").textContent = oc.available ? `${oc.label} · real tx` : "unavailable";
+  el.railToggle.querySelector('input[value="hsp"] ~ small').textContent =
+    mode === "live" ? "HSP MCP · live" : "HSP MCP · mock";
+  applyRail(defaultRail);
+}
+
+/** Switch the active settlement rail and update everything that depends on it. */
+function applyRail(next) {
+  rail = next;
+  const radio = el.railToggle.querySelector(`input[value="${next}"]`);
+  if (radio) radio.checked = true;
+  const oc = railInfo.onchain ?? {};
+
+  if (next === "onchain") {
+    el.paytoInput.value = oc.payTo ?? el.paytoInput.value;
+    el.paytoInput.disabled = true;
+    el.paytoHint.classList.remove("is-error");
+    el.paytoHint.textContent = "Locked: the provider's payout address registered in the escrow contract.";
+    el.railNote.innerHTML = "";
+    el.railNote.append(`Escrow on ${oc.label}: `);
+    const link = document.createElement(oc.settlementUrl ? "a" : "span");
+    link.textContent = short(oc.settlement);
+    if (oc.settlementUrl) {
+      link.href = oc.settlementUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+    el.railNote.append(link, `. Payer ${short(oc.payer)} signs; it never needs gas.`);
+  } else {
+    el.paytoInput.disabled = running;
+    el.paytoHint.textContent = "42-char EVM address, 0x…";
+    el.railNote.textContent =
+      mode === "live"
+        ? "Live HSP Gateway via MCP. Approvals gate real signatures."
+        : "HSP Gateway flow against a faithful mock (the QA endpoint needs an allowlisted IP).";
+  }
+
+  $("#pipeline-sub").textContent =
+    next === "onchain"
+      ? "services → authorizationNonce → sign EIP-3009 → settleWithAuthorization → getPayment → confirmDelivery"
+      : "get_chain_config → create_order → prepare → sign → finalize → submit → query → deliver";
+  $("#pay-sub").textContent =
+    next === "onchain"
+      ? "Signs a gasless EIP-3009 authorization; funds lock in escrow on HSK Chain."
+      : "Builds the x402 mandate, signs, settles via HSP Gateway.";
+
+  const live = next === "onchain" ? oc.network !== "local" : mode === "live";
+  el.modeLabel.textContent =
+    next === "onchain" ? (oc.network === "local" ? "local chain" : `live · ${oc.label ?? "HSK Chain"}`) : mode;
+  el.modeBadge.classList.toggle("mode-live", live);
+  el.modeBadge.classList.toggle("mode-mock", !live);
   el.footerModeNote.textContent =
-    mode === "live"
-      ? "Live mode — real HSP MCP server. Approvals gate real signatures."
-      : "Mock mode — offline simulation. Not a real on-chain payment.";
+    next === "onchain"
+      ? `On-chain rail — real transactions on ${oc.label ?? "HSK Chain"}.`
+      : mode === "live"
+        ? "Live mode — real HSP MCP server. Approvals gate real signatures."
+        : "Mock mode — offline simulation. Not a real on-chain payment.";
+
+  if (!running) buildPipeline();
+}
+
+function wireRailToggle() {
+  el.railToggle.addEventListener("change", (e) => {
+    if (e.target?.name === "rail" && !running) applyRail(e.target.value);
+  });
 }
 
 function wireGate() {
@@ -701,10 +845,9 @@ el.clearBtn.addEventListener("click", () => {
 buildPipeline();
 wireGate();
 wirePaytoValidation();
-loadMode();
+wireRailToggle();
 loadServices();
-
-// Hands-free demo mode (?autoplay=1): kick off a run shortly after load.
-if (AUTOPLAY) {
-  setTimeout(() => el.form.requestSubmit(), 600);
-}
+loadMode().then(() => {
+  // Hands-free demo mode (?autoplay=1): kick off a run once the rail is known.
+  if (AUTOPLAY) setTimeout(() => el.form.requestSubmit(), 600);
+});

@@ -20,6 +20,7 @@ export type FlowEvent =
   | { type: "service_requested"; at: string; serviceId: string; name: string; priceUsd: string; description: string }
   | { type: "resource_delivered"; at: string; serviceId: string; title: string; contentType: string; body: unknown }
   | { type: "resource_denied"; at: string; serviceId: string; reason: string }
+  | { type: "onchain_tx"; at: string; label: string; hash: string; network: string; explorerUrl?: string }
   | { type: "error"; at: string; message: string }
   | { type: "log"; at: string; message: string };
 

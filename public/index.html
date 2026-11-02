@@ -56,7 +56,7 @@
               <span class="agent-role">Payment agent</span>
               <span class="agent-status" data-state="idle">idle</span>
             </header>
-            <p class="agent-sub">Builds the x402 mandate, signs, settles via HSP Gateway.</p>
+            <p class="agent-sub" id="pay-sub">Builds the x402 mandate, signs, settles via HSP Gateway.</p>
             <dl class="agent-facts">
               <div><dt>payer</dt><dd class="mono" id="fact-payer">·</dd></div>
               <div><dt>network</dt><dd id="fact-network">·</dd></div>
@@ -67,6 +67,20 @@
 
         <form class="initiate" id="pay-form" autocomplete="off">
           <h2>Initiate payment</h2>
+          <fieldset class="rail-toggle" id="rail-toggle">
+            <legend>Settlement rail</legend>
+            <label class="rail-opt">
+              <input type="radio" name="rail" value="onchain" />
+              <span class="rail-name">HSK Chain escrow</span>
+              <small>checking…</small>
+            </label>
+            <label class="rail-opt">
+              <input type="radio" name="rail" value="hsp" />
+              <span class="rail-name">HSP Gateway</span>
+              <small>HSP MCP</small>
+            </label>
+          </fieldset>
+          <p class="rail-note" id="rail-note"></p>
           <label>
             Merchant / team name
             <input id="in-merchant" name="merchant" value="demo-team" required />
@@ -99,7 +113,7 @@
       <section class="pipeline-wrap" aria-label="Settlement pipeline">
         <div class="pipeline-head">
           <h1>Settlement pipeline</h1>
-          <span class="pipeline-sub">get_chain_config → create_order → prepare → sign → finalize → submit → query → deliver</span>
+          <span class="pipeline-sub" id="pipeline-sub">get_chain_config → create_order → prepare → sign → finalize → submit → query → deliver</span>
         </div>
 
         <div class="service-banner" id="service-banner" hidden>
@@ -143,7 +157,7 @@
         <!-- Settlement receipt (final) -->
         <div class="receipt" id="receipt" hidden>
           <div class="receipt-perforation" aria-hidden="true"></div>
-          <h3 class="receipt-title">HSP Agentic Payment · QA Result</h3>
+          <h3 class="receipt-title" id="receipt-title">Settlement receipt</h3>
           <dl id="receipt-body"></dl>
           <p class="receipt-foot" id="receipt-foot"></p>
         </div>

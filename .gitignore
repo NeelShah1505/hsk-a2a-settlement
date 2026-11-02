@@ -8,3 +8,11 @@ dist/
 
 # Harness runtime artifacts
 .claude/scheduled_tasks.lock
+
+# Local anvil deployments are ephemeral
+deployments/31337.json
+
+# Foundry build artifacts
+contracts/out/
+contracts/cache/
+contracts/broadcast/
