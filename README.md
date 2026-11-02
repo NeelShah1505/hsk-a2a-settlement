@@ -170,16 +170,17 @@ contracts/        Foundry: A2ASettlement, DepositVault, TestUSDC (EIP-3009), Rep
                   IdentityRegistry (ERC-8004-style), tests, deploy script
 deployments/      Deployed addresses per chain (written by the deploy script)
 src/
-  onchain/        Typed ABIs, HSK Chain networks, HskEscrowRail (viem)
-  a2a/            A2A schema, Receiving Agent + catalog, HSP exchange, on-chain exchange
-  onchain/        Typed ABIs, HSK networks, HskEscrowRail (viem) + ERC-8004 Identity/Reputation reads
+  onchain/        Typed ABIs + bytecode, HSK networks, HskEscrowRail (viem), ERC-8004 reads
+  a2a/            A2A schema, Receiving Agent + service catalog, HSP exchange, on-chain exchange
   hsp/            The 8 HSP tools: typed interface, MCP client, offline mock
   agent/          HSP payment-agent state machine, approvals, receipts, flow events
   signer/         Pluggable signer: burner (viem) + OKX wallet-skill adapter
   server/         Express + SSE server, both rails, deferred human approvals
+  mcp/            10-tool Streamable HTTP MCP server (server.ts)
   scripts/        deploy, connect, pay, sync-abi
 public/           Settlement Terminal web UI (no build step)
-tests/            Vitest: mandate, HSP agent, HSP exchange, on-chain integration
+tests/            Vitest: mandate, HSP agent, HSP exchange, on-chain + MCP integration, fork
+docs/             JUDGES / PROOF / CLAIMS / COMPETITION / MCP, demo/ (video + stills)
 ```
 
 ---
@@ -193,3 +194,70 @@ tests/            Vitest: mandate, HSP agent, HSP exchange, on-chain integration
 - **HSP status honesty**: `payment-safe` is half-confirmed, not final; unknown statuses are
   surfaced, never inferred; identifiers are retained instead of creating duplicate orders.
 - **Fail closed**: unparseable quote expiry is treated as expired; polling is time-bounded.
+
+---
+
+## Handoff — continuing this project
+
+This section is for the next developer. Everything below the two "pending" items is already
+built and tested; the backlog is optional polish, ordered by competitive value.
+
+### Set up a fresh clone
+
+```bash
+# prerequisites: Node 20+, pnpm, and Foundry (https://getfoundry.sh) for the contracts
+pnpm install
+pnpm contracts:build        # forge build (forge-std is vendored under contracts/lib)
+pnpm contracts:test         # 45 Foundry tests
+pnpm test                   # 28 TS tests (spins throwaway anvil chains itself)
+pnpm test:fork              # 2 tests vs the real USDC.e on a fork of HSK mainnet (needs the public RPC)
+pnpm typecheck
+# run it: pnpm chain:local  (t1) · pnpm deploy:local (t2) · pnpm dev → http://localhost:4100
+```
+
+Copy `.env.example` → `.env` and fill it. `.env` is gitignored; the committed burner/deployer
+keys are **not** in the repo, so generate your own (`cast wallet new`) and set
+`DEPLOYER_PRIVATE_KEY` / `BURNER_PRIVATE_KEY`.
+
+### What's DONE (don't redo)
+
+- `A2ASettlement` escrow with 3 funding rails (EIP-3009 gasless, ERC-20 approval, terms-committed
+  **deposit vaults**); delivery-hash release + timeout refund; payments keyed by `(payer,request,service)`.
+- Deposit vaults let HSP settle into escrow — proven on a mainnet fork with real USDC.e
+  (`tests/fork.test.ts`). Three-lens security review applied.
+- ERC-8004-style `ReputationRegistry` (settlement-backed) + `IdentityRegistry`.
+- `HskEscrowRail` (viem), `OnchainA2AExchange`, Express+SSE server, two-rail web UI, demo video.
+- 10-tool MCP server (`src/mcp/server.ts`), evidence pack in `docs/`.
+
+### What's LEFT
+
+**Operator-gated (needed to place in the hackathon):**
+1. **Deploy to HSK mainnet (177).** Fund `0xBaA9364c59041392b503d4a1A4be6126557FC919` with ~4 HSK,
+   then `pnpm deploy:mainnet` (writes `deployments/177.json`, registers services vs real USDC.e).
+   Then commit `deployments/177.json` and add the explorer links to `docs/PROOF.md`.
+2. **Live HSP settlement.** Ask the organizers to allowlist the run host's egress IP / issue HSP
+   merchant credentials, then `HSP_MODE=live pnpm dev` (or `pnpm connect` to verify the 8 tools).
+   `deploy/README.md` has a one-command static-IP box setup if the dev machine's IP rotates.
+
+**Non-blocked backlog (optional, ranked by value — see `docs/COMPETITION.md`):**
+3. **A real LLM payment-agent brain.** Today the agent is deterministic orchestration. Add an
+   LLM that turns natural language ("buy the market snapshot") into a service+policy decision,
+   pluggable behind an API key, degrading to deterministic without one. Natural seam:
+   `src/a2a/onchain-exchange.ts` (service selection) + a new `src/agent/llm.ts`.
+4. **Expose the deposit rail in the MCP server and UI.** The rail already has
+   `depositAddress / depositStatus / claimDeposit / refundExcessDeposit`
+   (`src/onchain/escrow-rail.ts`); add matching MCP tools in `src/mcp/server.ts` and a
+   "deposit" mode in the web UI so the HSP-into-escrow path is clickable, not just tested.
+5. **Deepen tests** toward the top of the field (property/invariant tests on the escrow).
+
+### Gotchas
+
+- **Local anvil + EIP-3009 expiry:** anvil mines on demand, so if it sits idle >10 min the block
+  timestamp goes stale and a signed authorization can read as expired. For long demos run
+  `anvil --block-time 1` or `evm_mine` periodically (the demo recorder does this).
+- **ABIs are generated:** after changing a contract, run `pnpm contracts:build && pnpm contracts:abi`
+  to regenerate `src/onchain/abi.ts` (ABIs **and** bytecode the tests deploy with).
+- **Don't commit `deployments/31337.json`** (local anvil, gitignored) — only real-network deployments.
+- **HSP facts** (verified live): production chain-config is public at
+  `https://hsp.hashkey.com/api/v1/payment/chain-config`; HSK-mainnet USDC.e is
+  `0x054ed45810DbBAb8B27668922D110669c9D88D0a` (eip3009), relayer `0x1aaA5E4371aAdf96bEfb5bd2Af4d896FD16915Ea`.
