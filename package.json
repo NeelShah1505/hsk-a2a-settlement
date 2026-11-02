@@ -21,7 +21,8 @@
     "chain:local": "anvil --port 8545",
     "deploy:local": "tsx src/scripts/deploy.ts local",
     "deploy:testnet": "tsx src/scripts/deploy.ts hsk-testnet",
-    "deploy:mainnet": "tsx src/scripts/deploy.ts hsk-mainnet"
+    "deploy:mainnet": "tsx src/scripts/deploy.ts hsk-mainnet",
+    "test:fork": "FORK_TEST=1 vitest run tests/fork.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

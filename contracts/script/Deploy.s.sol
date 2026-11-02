@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {A2ASettlement} from "../src/A2ASettlement.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 
@@ -45,6 +46,15 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
+        console2.log("A2ASettlement:", address(settlement));
+        console2.log("Token:        ", token);
+
+        // Only record real deployments: a dry run must never produce a deployment file.
+        if (!vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            console2.log("Dry run: deployments file not written.");
+            return;
+        }
+
         string memory obj = "deployment";
         vm.serializeUint(obj, "chainId", block.chainid);
         vm.serializeAddress(obj, "deployer", deployer);
@@ -57,9 +67,6 @@ contract Deploy is Script {
         string memory json = vm.serializeAddress(obj, "settlement", address(settlement));
         string memory path = string.concat(vm.projectRoot(), "/../deployments/", vm.toString(block.chainid), ".json");
         vm.writeJson(json, path);
-
-        console2.log("A2ASettlement:", address(settlement));
-        console2.log("Token:        ", token);
         console2.log("Written to:   ", path);
     }
 }

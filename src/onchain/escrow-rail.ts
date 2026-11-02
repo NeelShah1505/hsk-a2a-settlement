@@ -1,10 +1,13 @@
 import {
   createPublicClient,
   createWalletClient,
+  domainSeparator,
   http,
   keccak256,
+  parseAbi,
   parseSignature,
   toBytes,
+  type TypedDataDomain,
   type Account,
   type Address,
   type Hash,
@@ -60,6 +63,13 @@ export interface TxResult {
   hash: Hash;
   receipt: TransactionReceipt;
 }
+
+/** Fragments for tokens that predate EIP-5267 (e.g. Circle FiatToken v2 / USDC.e). */
+const legacyDomainAbi = parseAbi([
+  "function name() view returns (string)",
+  "function version() view returns (string)",
+  "function DOMAIN_SEPARATOR() view returns (bytes32)",
+]);
 
 /** Hash an off-chain identifier (service id, A2A request id) to the bytes32 the contract uses. */
 export function toBytes32Id(id: string): Hex {
@@ -148,8 +158,8 @@ export class HskEscrowRail {
     value: bigint;
     validForSeconds?: number;
   }): Promise<{ typedData: Eip712Payload; validAfter: bigint; validBefore: bigint }> {
-    const [domainTuple, nonce, block] = await Promise.all([
-      this.publicClient.readContract({ address: params.token, abi: testUsdcAbi, functionName: "eip712Domain" }),
+    const [domain, nonce, block] = await Promise.all([
+      this.readTokenDomain(params.token),
       this.publicClient.readContract({
         address: this.settlement,
         abi: a2aSettlementAbi,
@@ -158,7 +168,6 @@ export class HskEscrowRail {
       }),
       this.publicClient.getBlock(),
     ]);
-    const [, name, version, chainId, verifyingContract] = domainTuple;
     const validAfter = 0n;
     const validBefore = block.timestamp + BigInt(params.validForSeconds ?? 600);
 
@@ -166,7 +175,7 @@ export class HskEscrowRail {
       validAfter,
       validBefore,
       typedData: {
-        domain: { name, version, chainId: Number(chainId), verifyingContract },
+        domain: domain as Record<string, unknown>,
         types: {
           ReceiveWithAuthorization: [
             { name: "from", type: "address" },
@@ -188,6 +197,41 @@ export class HskEscrowRail {
         },
       },
     };
+  }
+
+  /**
+   * The token's EIP-712 domain. Prefers EIP-5267 `eip712Domain()`; for tokens without it
+   * (Circle FiatToken v2 such as USDC.e on HSK mainnet) it rebuilds the domain from
+   * name()/version() and refuses to continue unless it matches the token's own
+   * DOMAIN_SEPARATOR(), so the payer never signs against a wrong domain.
+   */
+  async readTokenDomain(token: Address): Promise<TypedDataDomain> {
+    try {
+      const [, name, version, chainId, verifyingContract] = await this.publicClient.readContract({
+        address: token,
+        abi: testUsdcAbi,
+        functionName: "eip712Domain",
+      });
+      return { name, version, chainId: Number(chainId), verifyingContract };
+    } catch {
+      const [name, version, onchainSeparator] = await Promise.all([
+        this.publicClient.readContract({ address: token, abi: legacyDomainAbi, functionName: "name" }),
+        this.publicClient
+          .readContract({ address: token, abi: legacyDomainAbi, functionName: "version" })
+          .catch(() => "1"),
+        this.publicClient.readContract({ address: token, abi: legacyDomainAbi, functionName: "DOMAIN_SEPARATOR" }),
+      ]);
+      const domain: TypedDataDomain = {
+        name,
+        version,
+        chainId: this.network.chain.id,
+        verifyingContract: token,
+      };
+      if (domainSeparator({ domain }) !== onchainSeparator) {
+        throw new Error(`could not reconstruct the EIP-712 domain of token ${token}; refusing to sign`);
+      }
+      return domain;
+    }
   }
 
   /** Relay the payer's signed authorization; the exact price moves into escrow. */
